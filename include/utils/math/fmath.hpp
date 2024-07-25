@@ -33,6 +33,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>  // for memcpy
+
 #include <limits>
 #if defined(_WIN32) && !defined(__GNUC__)
 #include <intrin.h>
@@ -40,25 +41,46 @@
 #define MIE_ALIGN(x) __declspec(align(x))
 #endif
 #else
+
 #ifndef __GNUC_PREREQ
 #define __GNUC_PREREQ(major, minor) \
   ((((__GNUC__) << 16) + (__GNUC_MINOR__)) >= (((major) << 16) + (minor)))
 #endif
-#if __GNUC_PREREQ(4, 4) || (__clang__ > 0 && __clang_major__ >= 3) || \
+
+// #if __GNUC_PREREQ(4, 4) || (__clang__ > 0 && __clang_major__ >= 3) || \
+//     !defined(__GNUC__)
+// /* GCC >= 4.4 or clang or non-GCC compilers */
+// #include <x86intrin.h>
+// #elif __GNUC_PREREQ(4, 1)
+// /* GCC 4.1, 4.2, and 4.3 do not have x86intrin.h, directly include SSE2
+// header
+//  */
+// #include <emmintrin.h>
+// #endif
+
+#if defined(__GNUC__) && (defined(__arm__) || defined(__aarch64__))
+/* GCC/Clang on ARM architecture */
+#include <arm_neon.h>
+#elif defined(_MSC_VER) && (defined(_M_ARM) || defined(_M_ARM64))
+/* Microsoft Visual C++ on ARM architecture */
+#include <arm_neon.h>
+#elif __GNUC_PREREQ(4, 4) || (__clang__ > 0 && __clang_major__ >= 3) || \
     !defined(__GNUC__)
-/* GCC >= 4.4 or clang or non-GCC compilers */
+/* GCC >= 4.4 or clang or non-GCC compilers on x86 */
 #include <x86intrin.h>
 #elif __GNUC_PREREQ(4, 1)
 /* GCC 4.1, 4.2, and 4.3 do not have x86intrin.h, directly include SSE2 header
  */
 #include <emmintrin.h>
 #endif
+
 #ifndef MIE_ALIGN
 #define MIE_ALIGN(x) __attribute__((aligned(x)))
 #endif
+
 #endif
 #ifndef MIE_PACK
-#define MIE_PACK(x, y, z, w) ((x)*64 + (y)*16 + (z)*4 + (w))
+#define MIE_PACK(x, y, z, w) ((x) * 64 + (y) * 16 + (z) * 4 + (w))
 #endif
 #ifdef FMATH_USE_XBYAK
 #define XBYAK_NO_OP_NAMES
@@ -425,6 +447,16 @@ inline float exp(float x)
 #endif
 }
 
+#if defined(__arm__) || defined(__aarch64__)
+#include <arm_neon.h>
+inline double expd(double x) {
+  return std::exp(x);
+  // NEON based implementation
+  // float32x2_t vx = vdup_n_f32(static_cast<float>(x));
+  // float32x2_t vy = exp_f32(vx);
+  // return static_cast<double>(vget_lane_f32(vy, 0));
+}
+#else
 inline double expd(double x) {
   if (x <= -708.39641853226408) return 0;
   if (x >= 709.78271289338397) return std::numeric_limits<double>::infinity();
@@ -464,55 +496,57 @@ inline double expd(double x) {
   return y * di.d;
 #endif
 }
-
-inline __m128d exp_pd(__m128d x) {
-#if 0  // faster on Haswell
-	MIE_ALIGN(16) double buf[2];
-	memcpy(buf, &x, sizeof(buf));
-	buf[0] = expd(buf[0]);
-	buf[1] = expd(buf[1]);
-	__m128d y;
-	memcpy(&y, buf, sizeof(buf));
-	return y;
-#else  // faster on Skeylake
-  using namespace local;
-  const ExpdVar<>& c = C<>::expdVar;
-  const double b = double(3ULL << 51);
-  const __m128d mC1 = *cast_to<__m128d>(c.C1);
-  const __m128d mC2 = *cast_to<__m128d>(c.C2);
-  const __m128d mC3 = *cast_to<__m128d>(c.C3);
-  const __m128d ma = _mm_set1_pd(c.a);
-  const __m128d mra = _mm_set1_pd(c.ra);
-  const __m128i madj = _mm_set1_epi32(c.adj);
-  MIE_ALIGN(16)
-  const double expMax[2] = {709.78271289338397, 709.78271289338397};
-  MIE_ALIGN(16)
-  const double expMin[2] = {-708.39641853226408, -708.39641853226408};
-  x = _mm_min_pd(x, *(const __m128d*)expMax);
-  x = _mm_max_pd(x, *(const __m128d*)expMin);
-
-  __m128d d = _mm_mul_pd(x, ma);
-  d = _mm_add_pd(d, _mm_set1_pd(b));
-  int adr0 = _mm_cvtsi128_si32(_mm_castpd_si128(d)) & mask(c.sbit);
-  int adr1 =
-      _mm_cvtsi128_si32(_mm_srli_si128(_mm_castpd_si128(d), 8)) & mask(c.sbit);
-  __m128i iaxL = _mm_castpd_si128(_mm_load_sd((const double*)&c.tbl[adr0]));
-  __m128i iax = _mm_castpd_si128(_mm_load_sd((const double*)&c.tbl[adr1]));
-  iax = _mm_unpacklo_epi64(iaxL, iax);
-
-  __m128d t = _mm_sub_pd(_mm_mul_pd(_mm_sub_pd(d, _mm_set1_pd(b)), mra), x);
-  __m128i u = _mm_castpd_si128(d);
-  u = _mm_add_epi64(u, madj);
-  u = _mm_srli_epi64(u, c.sbit);
-  u = _mm_slli_epi64(u, 52);
-  u = _mm_or_si128(u, iax);
-  __m128d y = _mm_mul_pd(_mm_sub_pd(mC3, t), _mm_mul_pd(t, t));
-  y = _mm_mul_pd(y, mC2);
-  y = _mm_add_pd(_mm_sub_pd(y, t), mC1);
-  y = _mm_mul_pd(y, _mm_castsi128_pd(u));
-  return y;
 #endif
-}
+
+// inline __m128d exp_pd(__m128d x) {
+// #if 0  // faster on Haswell
+// 	MIE_ALIGN(16) double buf[2];
+// 	memcpy(buf, &x, sizeof(buf));
+// 	buf[0] = expd(buf[0]);
+// 	buf[1] = expd(buf[1]);
+// 	__m128d y;
+// 	memcpy(&y, buf, sizeof(buf));
+// 	return y;
+// #else  // faster on Skeylake
+//   using namespace local;
+//   const ExpdVar<>& c = C<>::expdVar;
+//   const double b = double(3ULL << 51);
+//   const __m128d mC1 = *cast_to<__m128d>(c.C1);
+//   const __m128d mC2 = *cast_to<__m128d>(c.C2);
+//   const __m128d mC3 = *cast_to<__m128d>(c.C3);
+//   const __m128d ma = _mm_set1_pd(c.a);
+//   const __m128d mra = _mm_set1_pd(c.ra);
+//   const __m128i madj = _mm_set1_epi32(c.adj);
+//   MIE_ALIGN(16)
+//   const double expMax[2] = {709.78271289338397, 709.78271289338397};
+//   MIE_ALIGN(16)
+//   const double expMin[2] = {-708.39641853226408, -708.39641853226408};
+//   x = _mm_min_pd(x, *(const __m128d*)expMax);
+//   x = _mm_max_pd(x, *(const __m128d*)expMin);
+//
+//   __m128d d = _mm_mul_pd(x, ma);
+//   d = _mm_add_pd(d, _mm_set1_pd(b));
+//   int adr0 = _mm_cvtsi128_si32(_mm_castpd_si128(d)) & mask(c.sbit);
+//   int adr1 =
+//       _mm_cvtsi128_si32(_mm_srli_si128(_mm_castpd_si128(d), 8)) &
+//       mask(c.sbit);
+//   __m128i iaxL = _mm_castpd_si128(_mm_load_sd((const double*)&c.tbl[adr0]));
+//   __m128i iax = _mm_castpd_si128(_mm_load_sd((const double*)&c.tbl[adr1]));
+//   iax = _mm_unpacklo_epi64(iaxL, iax);
+//
+//   __m128d t = _mm_sub_pd(_mm_mul_pd(_mm_sub_pd(d, _mm_set1_pd(b)), mra), x);
+//   __m128i u = _mm_castpd_si128(d);
+//   u = _mm_add_epi64(u, madj);
+//   u = _mm_srli_epi64(u, c.sbit);
+//   u = _mm_slli_epi64(u, 52);
+//   u = _mm_or_si128(u, iax);
+//   __m128d y = _mm_mul_pd(_mm_sub_pd(mC3, t), _mm_mul_pd(t, t));
+//   y = _mm_mul_pd(y, mC2);
+//   y = _mm_add_pd(_mm_sub_pd(y, t), mC1);
+//   y = _mm_mul_pd(y, _mm_castsi128_pd(u));
+//   return y;
+// #endif
+// }
 
 /*
         px : pointer to array of double
@@ -861,8 +895,8 @@ inline __m128d pow_pd(__m128d x, __m128d y) {
   return exp_pd(_mm_mul_pd(y, log_pd(x)));
 }
 
-inline void add_ps_vec(const float* arr1, size_t n1, const float* arr2, size_t n2,
-                       float* output, size_t n3) {
+inline void add_ps_vec(const float* arr1, size_t n1, const float* arr2,
+                       size_t n2, float* output, size_t n3) {
   assert(n1 == n2 && n2 == n3);
   size_t n = n1;
   size_t j = 0;

@@ -75,6 +75,7 @@ class RuntimeGraph {
  private:
   /**
    * 初始化kuiper infer计算图节点中的输入操作数
+   * 设置input_operands和input_operands_seq
    * @param inputs pnnx中的输入操作数
    * @param runtime_operator 计算图节点
    */
@@ -84,6 +85,7 @@ class RuntimeGraph {
 
   /**
    * 初始化kuiper infer计算图节点中的输出操作数
+   * 设置output_names
    * @param outputs pnnx中的输出操作数
    * @param runtime_operator 计算图节点
    */

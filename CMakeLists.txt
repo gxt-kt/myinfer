@@ -3,6 +3,8 @@ project(myinfer)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(CMAKE_BUILD_TYPE Debug)
+
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(benchmark REQUIRED)
@@ -23,14 +25,15 @@ if (!WIN32)
 endif ()
 set(link_math_lib ${ARMADILLO_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
-# aux_source_directory(./test/aram DIR_TEST_ARMA)
-# aux_source_directory(./test/tensor DIR_TEST_ARMA)
+aux_source_directory(./test/arma DIR_TEST_ARMA)
+aux_source_directory(./test/tensor DIR_TEST_ARMA)
+aux_source_directory(./test/graph DIR_TEST_ARMA)
 # aux_source_directory(./test/pnnx_ir DIR_TEST_ARMA)
-# aux_source_directory(./test/graph DIR_TEST_ARMA)
 # aux_source_directory(./test/layer DIR_TEST_ARMA)
 # aux_source_directory(./test/expression DIR_TEST_ARMA)
-aux_source_directory(./test/resnet DIR_TEST_ARMA)
-aux_source_directory(./test/yolov5 DIR_TEST_ARMA)
+# aux_source_directory(./test/resnet DIR_TEST_ARMA)
+# aux_source_directory(./test/yolov5 DIR_TEST_ARMA)
+message(STATUS test_files:${DIR_TEST_ARMA})
 
 aux_source_directory(./source DIR_SOURCE_ARMA)
 aux_source_directory(./source/layer/abstract DIR_ABSTRACT_LAYER)

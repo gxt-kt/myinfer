@@ -3,7 +3,9 @@
 //
 
 #include "data/tensor.hpp"
+
 #include <glog/logging.h>
+
 #include <memory>
 #include <numeric>
 
@@ -102,11 +104,11 @@ uint32_t Tensor<float>::size() const {
 
 void Tensor<float>::set_data(const arma::fcube &data) {
   CHECK(data.n_rows == this->data_.n_rows)
-          << data.n_rows << " != " << this->data_.n_rows;
+      << data.n_rows << " != " << this->data_.n_rows;
   CHECK(data.n_cols == this->data_.n_cols)
-          << data.n_cols << " != " << this->data_.n_cols;
+      << data.n_cols << " != " << this->data_.n_cols;
   CHECK(data.n_slices == this->data_.n_slices)
-          << data.n_slices << " != " << this->data_.n_slices;
+      << data.n_slices << " != " << this->data_.n_slices;
   this->data_ = data;
 }
 
@@ -165,7 +167,15 @@ void Tensor<float>::Padding(const std::vector<uint32_t> &pads,
   uint32_t pad_cols1 = pads.at(2);  // left
   uint32_t pad_cols2 = pads.at(3);  // right
 
-  // 请补充代码
+  arma::fcube new_data(this->data_.n_rows + pad_rows1 + pad_rows2,
+                       this->data_.n_cols + pad_cols1 + pad_cols2,
+                       this->data_.n_slices);
+  new_data.fill(padding_value);
+
+  new_data.subcube(pad_rows1, pad_cols1, 0, new_data.n_rows - pad_rows2 - 1,
+                   new_data.n_cols - pad_cols2 - 1, new_data.n_slices - 1) =
+      this->data_;
+  this->data_ = std::move(new_data);
 }
 
 void Tensor<float>::Fill(float value) {
@@ -186,7 +196,7 @@ void Tensor<float>::Fill(const std::vector<float> &values, bool row_major) {
     for (uint32_t i = 0; i < channels; ++i) {
       auto &channel_data = this->data_.slice(i);
       const arma::fmat &channel_data_t =
-          arma::fmat((float *) values.data() + i * planes, this->cols(),
+          arma::fmat((float *)values.data() + i * planes, this->cols(),
                      this->rows(), false, true);
       channel_data = channel_data_t.t();
     }
@@ -204,7 +214,8 @@ void Tensor<float>::Show() {
 
 void Tensor<float>::Flatten(bool row_major) {
   CHECK(!this->data_.empty());
-  // 请补充代码
+  const uint32_t size = this->data_.size();
+  this->Reshape({size});
 }
 
 void Tensor<float>::Rand() {

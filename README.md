@@ -1,4 +1,3 @@
-# kuiperdatawhale
+# gxt_kt 推理框架
 
-
-[https://github.com/zjhellofss/KuiperInfer](https://github.com/zjhellofss/KuiperInfer) ，欢迎大家点赞和PR.
+自己的笔记和测试
